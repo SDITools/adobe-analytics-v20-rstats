@@ -1,0 +1,118 @@
+---
+title: "Basic Example: Adobe Analytics v2.0 API"
+output: html_notebook
+---
+
+This is a simple (starter) example for pulling data using the v2.0 Reporting API for Adobe Analytics. 
+
+## Background and Resources
+
+The goal of this example is to simply "pull a simple table of data." Because of the way the v2.0 API works, to keep it _simple_, this code is limited to a single dimension, but it does support multiple metrics.
+
+## Basic Settings
+
+Update the settings in the snippet below to specify the parameters of the query. While real values are shown 
+
+```{r settings}
+
+# Load the necessary libraries. 
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(tidyverse, jsonlite, httr, knitr, kableExtra, DT)
+
+# The values below come from the Adobe I/O Console. You will have to set up (or have set up) an
+# OAuth client there to use the v2.0 API: 
+# https://www.adobe.io/apis/experiencecloud/analytics/docs.html#!AdobeDocs/analytics-2.0-apis/master/create-oauth-client.md
+api_key <- "d9ba2335d0cf465d8a24b890679dbe9c"
+
+# This is an even bigger pain to get, but it's your company ID
+company_id <- "search9"
+
+# This token will expire periodically and will need to be updated. Not that it starts with "Bearer"
+# and is the entire string following that in the "CURL REQUEST" of the Analysis Workspace 
+# Oberon XML debugger
+aa_token <- "Bearer eyJ4NXUiOiJpbXNfbmExLWtleS0xLmNlciIsImFsZyI6IlJTMjU2In0.eyJpZCI6IjE1NjE4MzExMTkyOTVfYWU3NDE5OGQtNDdhOS00ODljLThjZGQtZmIyMzExNmFhOWNjX3VlMSIsImNsaWVudF9pZCI6IlNpdGVDYXRhbHlzdDIiLCJ1c2VyX2lkIjoiRjYxQkE5NTQ1QTdCMzIzRDBBNDk1RDZDQEFkb2JlSUQiLCJzdGF0ZSI6IntcInNlc3Npb25cIjpcImh0dHBzOi8vaW1zLW5hMS5hZG9iZWxvZ2luLmNvbS9pbXMvc2Vzc2lvbi92MS9aR1E1TURZME1qWXRZVE5tWkMwME1HVXdMVGt5TWprdFlXRmxNV0l6TWpNNVlqZGxMUzFHTmpGQ1FUazFORFZCTjBJek1qTkVNRUUwT1RWRU5rTkFRV1J2WW1WSlJBXCJ9IiwidHlwZSI6ImFjY2Vzc190b2tlbiIsImFzIjoiaW1zLW5hMSIsImZnIjoiVFJZSk5IQk1YTFAzN0hXNjI2WjJLVFFBUUE9PT09PT0iLCJzaWQiOiIxNTU3NDQyOTI2ODk5XzU4OGZmODU0LTgzZjktNGFiOS1iZDljLTM2Y2QxZGEzYWQ5ZV91ZTEiLCJydGlkIjoiMTU2MTgzMTExOTI5NV9lNGIxNTA5Zi02OWUwLTQxMTgtYWI1My1jMDJmZDNhMWU0NDdfdWUxIiwib2MiOiJyZW5nYSpuYTFyKjE2YmE0NjM5NjU2KlJHMjMxNjlQTkg2RDMwWE1FNDk2M1YwSzNSIiwicnRlYSI6IjE1NjMwNDA3MTkyOTUiLCJtb2kiOiJiODlhNDc3NyIsImMiOiJoT3F0YXdvNWg0SWp6bXl5Q0ZGTmt3PT0iLCJleHBpcmVzX2luIjoiODY0MDAwMDAiLCJzY29wZSI6Im9wZW5pZCxBZG9iZUlELHJlYWRfb3JnYW5pemF0aW9ucyxhZGRpdGlvbmFsX2luZm8ucHJvamVjdGVkUHJvZHVjdENvbnRleHQsYWRkaXRpb25hbF9pbmZvLmpvYl9mdW5jdGlvbixzZXNzaW9uIiwiY3JlYXRlZF9hdCI6IjE1NjE4MzExMTkyOTUifQ.DwXo2Jcv2X9DeBUi-u_Y7CK2Mt7LTNIew5uuWO_1FTM-nOy1q2QUTnjCGvZajr-JakZxT20RJ5mMe9r6_V1twX-5K0sQblFAM1UotveRZu7GVCuXOaCrJnWgscmKxCWl6V6SxwuA-bqLvMAamat1UZd0kMm0-QEhHWik4jjPOKOfJC5-dOJAH3Od-RyJTHnRZ-aV5-X-2pnSA-f1ykCrkM-aYE67fTDOG0HSrT0LMC-zugTJ8Bdv_KjUxqACPFAOZkDc1Wm1wacjoCTOOoHGr31sl1FVUcjSOn2lKk5VD5X7AYMr-Trr7nMMJf31EY5xIfDWT_GffrEj_eofPcaoCQ"
+
+# Set the report suite ID
+aa_rsid <- "sdptnrsdiprod"
+
+# Set the start and end dates
+start_date <- Sys.Date() - 30
+end_date <- Sys.Date() - 1
+
+# Set the dimension and metrics for the report
+aa_dim <- "page"
+aa_metrics <- "pageviews"
+
+# Set the number of rows to return
+num_rows <- 50
+
+
+```
+
+## Pull the Data
+
+```{r pull-data}
+
+# Create the date range string
+timeframe <- paste0(start_date, "T00:00:00.000/", end_date + 1, "T00:00:00.000")
+
+# Build the body of the JSON request. This is the messy part, but it's what you can most easily
+# tinker with if you view the JSON in the Oberaon XML debugger in Workspace
+request_body_json <- sprintf('{
+    "rsid": "%s",
+    "globalFilters": [
+        {
+            "type": "dateRange",
+            "dateRange": "%s"
+        }
+    ],
+    "metricContainer": {
+        "metrics": [
+            {
+                "columnId": "0",
+                "id": "metrics/%s",
+                "sort": "desc"
+            }
+        ]
+    },
+    "dimension": "variables/%s",
+    "settings": {
+        "countRepeatInstances": true,
+        "limit": %s,
+        "page": 0
+    },
+    "statistics": {
+        "functions": [
+            "col-max",
+            "col-min"
+        ]
+    }
+}', aa_rsid, timeframe, aa_metrics, aa_dim, num_rows)
+
+# Buld the request URL.
+request_url <- paste0("https://analytics.adobe.io/api/", company_id, "/reports/ranked")
+
+# Actually make the request
+result <- POST(request_url,
+                 body = request_body_json,
+                 add_headers(.headers = c("Accept" = "application/json",
+                                          "Authorization" = aa_token,
+                                          "Content-Type" = "application/json",
+                                          "x-api-key" = api_key,
+                                          "x-proxy-global-company-id" = company_id)))
+
+# Extract the content from the result of the call
+result_data <- content(result)
+
+# Get just the data into a data frame. There may be a more efficient way, but the
+# below is essentially lifted (inelegantly -- this source has very clean approaches
+# in and of themselves) from https://cfss.uchicago.edu/notes/simplify-nested-lists/
+result_df <- map_df(result_data$rows, magrittr::extract, "value") %>% 
+  cbind(pageviews = map_dbl(result_data$rows, c(3,1)))
+
+# Output the results as a dynamic table (DT)
+datatable(result_df)
+
+```
+
+
